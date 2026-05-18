@@ -2,46 +2,94 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>指数估值自动监控</title>
+<title>全指数估值监控｜含百分位与买卖信号</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
 <style>
-body{max-width:1000px;margin:20px auto;font-family:Arial}
-table{width:100%;border-collapse:collapse;margin:20px 0}
-th,td{border:1px solid #ccc;padding:8px;text-align:center}
+body{max-width:1250px;margin:30px auto;font-family:system-ui;padding:0 20px}
+h2{text-align:center;color:#222}
+#info{margin:15px auto;text-align:center;font-size:14px;color:#333;line-height:1.7}
+.buy{color:#090;font-weight:bold}
+.sell{color:#f30;font-weight:bold}
+.normal{color:#333}
 </style>
 </head>
 <body>
-<h2>📈 指数PE估值折线图 & 高低判断</h2>
-<canvas id="chart" height="300"></canvas>
-<table id="table">
-  <tr><th>指数</th><th>日期</th><th>PE</th><th>PB</th><th>估值状态</th></tr>
-</table>
+<h2>全市场指数PE估值｜自动每日更新｜买卖信号</h2>
+<div id="info">加载中...</div>
+<canvas id="chart" height="450"></canvas>
 
 <script>
-fetch("data.json").then(res=>res.json()).then(data=>{
-  const ctx = document.getElementById("chart").getContext("2d");
-  const datasets = [];
-  const table = document.getElementById("table");
+fetch("history.json")
+.then(res=>res.json())
+.then(list=>{
+  const dates = list.map(x=>x.date);
+  const hs300 = list.map(x=>x.hs300_pe);
+  const zz500 = list.map(x=>x.zz500_pe);
+  const cybz  = list.map(x=>x.cybz_pe);
+  const zzhl  = list.map(x=>x.zzhl_pe);
+  const kc50  = list.map(x=>x.kc50_pe);
+  const sz50  = list.map(x=>x.sz50_pe);
+  const zz1000= list.map(x=>x.zz1000_pe);
+  const nd100 = list.map(x=>x.nd100_pe);
+  const bp500 = list.map(x=>x.bp500_pe);
 
-  data.forEach(item=>{
-    // 画折线
-    datasets.push({
-      label: item.name,
-      data: [{x:item.date,y:item.pe}],
-      borderColor: item.color,
-      tension:0.3
-    })
-    // 表格
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${item.name}</td><td>${item.date}</td><td>${item.pe}</td><td>${item.pb}</td><td style="color:${item.color}">${item.level}</td>`;
-    table.appendChild(tr);
+  new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {label:"沪深300",    data:hs300,   borderColor:"#ff6600", fill:false, pointRadius:2},
+        {label:"中证500",    data:zz500,   borderColor:"#0066ff", fill:false, pointRadius:2},
+        {label:"创业板",      data:cybz,    borderColor:"#00aa33", fill:false, pointRadius:2},
+        {label:"中证红利",    data:zzhl,    borderColor:"#cc00cc", fill:false, pointRadius:2},
+        {label:"科创50",      data:kc50,    borderColor:"#ff3366", fill:false, pointRadius:2},
+        {label:"上证50",      data:sz50,    borderColor:"#666666", fill:false, pointRadius:2},
+        {label:"中证1000",    data:zz1000,  borderColor:"#33cccc", fill:false, pointRadius:2},
+        {label:"纳指100",     data:nd100,   borderColor:"#000000", fill:false, pointRadius:2},
+        {label:"标普500",     data:bp500,   borderColor:"#884400", fill:false, pointRadius:2}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        tooltip:{mode:"index",intersect:false},
+        annotation:{
+          annotations:{
+            lowZone:{type:"box",yMin:0,yMax:12,backgroundColor:"rgba(0,200,0,0.1)",borderWidth:0},
+            midZone:{type:"box",yMin:12,yMax:25,backgroundColor:"rgba(255,200,0,0.1)",borderWidth:0},
+            highZone:{type:"box",yMin:25,yMax:50,backgroundColor:"rgba(255,80,80,0.1)",borderWidth:0}
+          }
+        }
+      },
+      scales:{y:{grid:{color:"rgba(200,200,200,0.3)"}}}
+    }
   })
 
-  new Chart(ctx,{
-    type:"line",
-    data:{datasets:datasets},
-    options:{scales:{x:{title:{text:"日期"}},y:{title:{text:"PE估值"}}}}
-  })
+  const last = list[list.length-1];
+  function getTag(name){
+    const pe = last[name+"_pe"];
+    const pct = last[name+"_pct"];
+    if(pe<=VAL[name].low_pe||pct<=20) return `<span class='buy'>买入</span>`
+    if(pe>=VAL[name].high_pe||pct>=80) return `<span class='sell'>卖出</span>`
+    return `<span class='normal'>持有</span>`
+  }
+  const VAL = {
+    hs300:{low_pe:9,high_pe:14},zz500:{low_pe:13,high_pe:20},cybz:{low_pe:25,high_pe:38},
+    zzhl:{low_pe:7,high_pe:12},kc50:{low_pe:30,high_pe:48},sz50:{low_pe:8,high_pe:13},
+    zz1000:{low_pe:18,high_pe:28},nd100:{low_pe:22,high_pe:36},bp500:{low_pe:16,high_pe:26}
+  }
+  document.getElementById("info").innerHTML =
+`更新：${last.date}
+<br>沪深300:${last.hs300_pe}｜分位${last.hs300_pct}% ${getTag("hs300")}
+中证500:${last.zz500_pe}｜${last.zz500_pct}% ${getTag("zz500")}
+创业板:${last.cybz_pe}｜${last.cybz_pct}% ${getTag("cybz")}
+<br>中证红利:${last.zzhl_pe}｜${last.zzhl_pct}% ${getTag("zzhl")}
+科创50:${last.kc50_pe}｜${last.kc50_pct}% ${getTag("kc50")}
+上证50:${last.sz50_pe}｜${last.sz50_pct}% ${getTag("sz50")}
+<br>中证1000:${last.zz1000_pe}｜${last.zz1000_pct}% ${getTag("zz1000")}
+纳指100:${last.nd100_pe}｜${last.nd100_pct}% ${getTag("nd100")}
+标普500:${last.bp500_pe}｜${last.bp500_pct}% ${getTag("bp500")}`
 })
 </script>
 </body>
