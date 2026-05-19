@@ -1,0 +1,29 @@
+ 
+name: Auto Update Valuation
+on:
+  push:
+  schedule:
+    - cron: "0 17 * * *" # UTC 17点 = 北京时间凌晨1点
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions: # 添加权限声明，允许写入仓库
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install libs
+        run: pip install requests pandas
+      - name: Run script
+        run: python get_valuation.py
+      - name: Commit data
+        run: |
+          git config --global user.name "bot"
+          git config --global user.email "bot@github.com"
+          git add data.json
+          git diff --cached --quiet || git commit -m "auto update valuation" # 避免空提交报错
+          git push
+ 
