@@ -25,4 +25,3 @@ jobs:
           git add data.json
           git diff --cached --quiet || git commit -m "auto update valuation" # 避免空提交报错
           git push
- 
