@@ -2,47 +2,96 @@ import requests
 import json
 from datetime import datetime
 
-# 微信推送（不填也能运行）
-SEND_KEY = ""
+# ========== 配置区 ==========
+SEND_KEY = ""  # 填你的Server酱SendKey
 
-# 国内指数估值区间
+# 估值区间+5年百分位阈值
 VAL = {
-    "hs300": {"low_pe":9, "high_pe":14},
-    "zz500": {"low_pe":13, "high_pe":20},
-    "cybz": {"low_pe":25, "high_pe":38}
+    "hs300":   {"low_pe":9,  "mid_pe":11, "high_pe":14, "low_pct":20, "high_pct":80},
+    "zz500":   {"low_pe":13, "mid_pe":16, "high_pe":20, "low_pct":20, "high_pct":80},
+    "cybz":    {"low_pe":25, "mid_pe":30, "high_pe":38, "low_pct":20, "high_pct":80},
+    "zzhl":    {"low_pe":7,  "mid_pe":9,  "high_pe":12, "low_pct":20, "high_pct":80},
+    "kc50":    {"low_pe":30, "mid_pe":38, "high_pe":48, "low_pct":20, "high_pct":80},
+    "sz50":    {"low_pe":8,  "mid_pe":10, "high_pe":13, "low_pct":20, "high_pct":80},
+    "zz1000":  {"low_pe":18, "mid_pe":22, "high_pe":28, "low_pct":20, "high_pct":80},
+    "nd100":   {"low_pe":22, "mid_pe":28, "high_pe":36, "low_pct":20, "high_pct":80},
+    "bp500":   {"low_pe":16, "mid_pe":20, "high_pe":26, "low_pct":20, "high_pct":80}
 }
+# ==========================
 
-indexs = {
-    "hs300":"000300",
-    "zz500":"000905",
-    "cybz":"399006"
+cn_index = {
+    "hs300": "000300","zz500":"000905","cybz":"399006",
+    "zzhl":"000922","kc50":"000688","sz50":"000016","zz1000":"000852"
 }
+us_index = {"nd100":"NDX","bp500":"SPX"}
 
 result = {"date": datetime.now().strftime("%Y-%m-%d")}
-headers = {"User-Agent":"Mozilla/5.0"}
+headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-# 爬取数据
-for name,code in indexs.items():
+# 国内指数PE/PB
+for name, code in cn_index.items():
     try:
-        r = requests.get(f"https://www.csindex.com.cn/zh/index-data/index-pe-pb?indexCode={code}", headers=headers, timeout=10)
+        url = f"https://www.csindex.com.cn/zh/index-data/index-pe-pb?indexCode={code}"
+        r = requests.get(url, headers=headers, timeout=12)
         d = r.json()
         result[f"{name}_pe"] = float(d["data"][0]["pe"])
+        result[f"{name}_pb"] = float(d["data"][0]["pb"])
+    except:
+        result[f"{name}_pe"] = None
+        result[f"{name}_pb"] = None
+
+# 美股PE
+for name, code in us_index.items():
+    try:
+        url = f"https://xueqiu.com/S/{code}"
+        r = requests.get(url, headers=headers, timeout=12)
+        import re
+        pe = re.search(r'市盈率\(TTM\).*?(\d+\.\d+)', r.text)
+        result[f"{name}_pe"] = float(pe.group(1)) if pe else None
     except:
         result[f"{name}_pe"] = None
 
-# 历史数据
+# 加载历史
 try:
     with open("history.json","r",encoding="utf-8") as f:
         history = json.load(f)
 except:
     history = []
 history.append(result)
-history = history[-90:]
+history = history[-180:]
+
+# 简单计算5年百分位（按历史180天模拟）
+for name in list(VAL.keys()):
+    plist = [x[f"{name}_pe"] for x in history if x.get(f"{name}_pe") is not None]
+    if plist:
+        current = result[f"{name}_pe"]
+        pct = sum(1 for p in plist if p <= current) / len(plist) * 100
+        result[f"{name}_pct"] = round(pct,1)
+    else:
+        result[f"{name}_pct"] = None
 
 # 保存
 with open("history.json","w",encoding="utf-8") as f:
-    json.dump(history, f, ensure_ascii=False, indent=2)
+    json.dump(history,f,ensure_ascii=False,indent=2)
 with open("data.json","w",encoding="utf-8") as f:
-    json.dump(result, f, ensure_ascii=False, indent=2)
+    json.dump(result,f,ensure_ascii=False,indent=2)
 
-print("✅ 数据生成成功")
+# 微信推送+买卖信号
+if SEND_KEY:
+    msg = "📊 全指数估值每日更新\n"
+    all_index = {**cn_index,**us_index}
+    for name in all_index:
+        pe = result.get(f"{name}_pe")
+        pct = result.get(f"{name}_pct")
+        if pe is None: continue
+        v = VAL[name]
+        if pe <= v["low_pe"] or pct <= v["low_pct"]:
+            status = "🔥【买入】低估"
+        elif pe >= v["high_pe"] or pct >= v["high_pct"]:
+            status = "⚠️【卖出】高估"
+        else:
+            status = "✅ 正常持有"
+        msg += f"{name} PE:{pe:.2f} 分位:{pct}% {status}\n"
+    requests.get(f"https://sctapi.ftqq.com/{SEND_KEY}.send?title=指数估值提醒｜买卖信号&desp={msg}")
+
+print("✅ 全指数+百分位+买卖信号更新完成")
