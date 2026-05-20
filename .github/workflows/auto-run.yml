@@ -2,7 +2,7 @@ name: Auto Update Valuation
 on:
   push:
   schedule:
-    - cron: "0 17 * * *" # UTC 17点 = 北京时间凌晨1点
+    - cron: "0 8 * * *" # UTC 08点 = 北京时间凌晨16点
 jobs:
   run:
     runs-on: ubuntu-latest
