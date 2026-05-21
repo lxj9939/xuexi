@@ -24,4 +24,3 @@ jobs:
           git add .
           git commit -m "update data" || true
           git push
-
